@@ -32,12 +32,14 @@ const nullthrows = require('nullthrows');
 
 import type {BidiDirection} from 'UnicodeBidiDirection';
 import type {DraftDecoratorType} from 'DraftDecoratorType';
+import type {BlockMap} from 'BlockMap';
 import type {List} from 'immutable';
 
 const SCROLL_BUFFER = 10;
 
 type Props = {
   block: ContentBlock,
+  blockMapTree: Object,
   customStyleMap: Object,
   tree: List<any>,
   selection: SelectionState,
@@ -57,10 +59,20 @@ type Props = {
  */
 class DraftEditorBlock extends React.Component {
   shouldComponentUpdate(nextProps: Props): boolean {
+    const {
+        block,
+        direction,
+        blockMapTree,
+        tree,
+    } = this.props;
+
+    const key = block.getKey();
+
     return (
-      this.props.block !== nextProps.block ||
-      this.props.tree !== nextProps.tree ||
-      this.props.direction !== nextProps.direction ||
+      blockMapTree.getIn([key, 'childrenBlocks']) !== nextProps.blockMapTree.getIn([key, 'childrenBlocks']) ||
+      block !== nextProps.block ||
+      tree !== nextProps.tree ||
+      direction !== nextProps.direction ||
       (
         isBlockOnSelectionEdge(
           nextProps.selection,
@@ -193,17 +205,28 @@ class DraftEditorBlock extends React.Component {
     }).toArray();
   }
 
+  _renderBlockMap(
+    blocks: BlockMap
+  ): React.Element {
+    var DraftEditorBlocks = this.props.DraftEditorBlocks;
+    return <DraftEditorBlocks {...this.props} blockMap={blocks} />;
+  }
+
   render(): React.Element<any> {
-    const {direction, offsetKey} = this.props;
+    const {direction, offsetKey, blockMap} = this.props;
     const className = cx({
       'public/DraftStyleDefault/block': true,
       'public/DraftStyleDefault/ltr': direction === 'LTR',
       'public/DraftStyleDefault/rtl': direction === 'RTL',
     });
 
+    // Render nested blocks or text but never both at the same time.
     return (
       <div data-offset-key={offsetKey} className={className}>
-        {this._renderChildren()}
+        {blockMap && blockMap.size && blockMap.size > 0 ?
+          this._renderBlockMap(blockMap) :
+          this._renderChildren()
+        }
       </div>
     );
   }

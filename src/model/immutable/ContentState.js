@@ -10,7 +10,6 @@
  * @typechecks
  * @flow
  */
-
 'use strict';
 
 const BlockMapBuilder = require('BlockMapBuilder');
@@ -54,6 +53,92 @@ class ContentState extends ContentStateRecord {
   getBlockForKey(key: string): ContentBlock {
     var block: ContentBlock = this.getBlockMap().get(key);
     return block;
+  }
+
+  getFirstLevelBlocks(): BlockMap {
+    return this.getBlockChildren('');
+  }
+
+  /*
+   * This algorithm is used to create the blockMap nesting as well as to
+   * enhance performance checks for nested blocks allowing each block to
+   * know when any of it's children has changed.
+   */
+  getBlockDescendants() {
+    return this.getBlockMap()
+      .reverse()
+      .reduce((treeMap, block) => {
+        const key = block.getKey();
+        const parentKey = block.getParentKey();
+        const rootKey = '__ROOT__';
+
+        // create one if does not exist
+        const blockList = (
+          treeMap.get(key) ?
+            treeMap :
+            treeMap.set(key, new Immutable.Map({
+              firstLevelBlocks: new Immutable.OrderedMap(),
+              childrenBlocks: new Immutable.Set()
+            }))
+        );
+
+        if (parentKey) {
+          // create one if does not exist
+          const parentList = (
+            blockList.get(parentKey) ?
+              blockList :
+              blockList.set(parentKey, new Immutable.Map({
+                firstLevelBlocks: new Immutable.OrderedMap(),
+                childrenBlocks: new Immutable.Set()
+              }))
+          );
+
+          // add current block to parent children list
+          const addBlockToParentList = parentList.setIn([parentKey, 'firstLevelBlocks', key], block);
+          const addGrandChildren = addBlockToParentList.setIn(
+            [parentKey, 'childrenBlocks'],
+            addBlockToParentList.getIn([parentKey, 'childrenBlocks'])
+              .add(
+                // we include all the current block children and itself
+                addBlockToParentList.getIn([key, 'childrenBlocks']).add(block)
+              )
+          );
+
+          return addGrandChildren;
+        } else {
+          // we are root level block
+          // lets create a new key called firstLevelBlocks
+          const rootLevelBlocks = (
+            blockList.get(rootKey) ?
+              blockList :
+              blockList.set(rootKey, new Immutable.Map({
+                firstLevelBlocks: new Immutable.OrderedMap(),
+                childrenBlocks: new Immutable.Set()
+              }))
+          );
+
+          const rootFirstLevelBlocks = rootLevelBlocks.setIn([rootKey, 'firstLevelBlocks', key], block);
+
+          const addToRootChildren = rootFirstLevelBlocks.setIn(
+            [rootKey, 'childrenBlocks'],
+            rootFirstLevelBlocks.getIn([rootKey, 'childrenBlocks'])
+              .add(
+                // we include all the current block children and itself
+                rootFirstLevelBlocks.getIn([key, 'childrenBlocks']).add(block)
+              )
+          );
+
+          return addToRootChildren;
+        }
+      }, new Immutable.Map())
+      .map((block) => block.set('firstLevelBlocks', block.get('firstLevelBlocks').reverse()));
+  }
+
+  getBlockChildren(key: string): BlockMap {
+    return this.getBlockMap()
+    .filter(function(block) {
+      return block.getParentKey() === key;
+    });
   }
 
   getKeyBefore(key: string): ?string {
